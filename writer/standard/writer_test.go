@@ -8,7 +8,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/yeqown/go-qrcode/v2"
+	"github.com/Mictilt/go-qrcode/v2"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

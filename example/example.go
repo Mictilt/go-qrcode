@@ -5,8 +5,8 @@ import (
 	"image/color"
 	"os"
 
-	"github.com/yeqown/go-qrcode/v2"
-	"github.com/yeqown/go-qrcode/writer/standard"
+	"github.com/Mictilt/go-qrcode/v2"
+	"github.com/Mictilt/go-qrcode/writer/standard"
 )
 
 // createQRWithQRWidth generates a QR code using the WithQRWidth option.
@@ -205,7 +205,7 @@ func createQRWithLogo(content string) {
 }
 
 func main() {
-	content := "https://github.com/yeqown/go-qrcode"
+	content := "https://github.com/Mictilt/go-qrcode"
 
 	createQRWithQRWidth(content)
 	createQRWithCircleShape(content)

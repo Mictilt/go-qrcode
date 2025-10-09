@@ -1,9 +1,9 @@
 package main
 
 import (
-	"github.com/yeqown/go-qrcode/v2"
-	"github.com/yeqown/go-qrcode/writer/standard"
-	"github.com/yeqown/go-qrcode/writer/standard/shapes"
+	"github.com/Mictilt/go-qrcode/v2"
+	"github.com/Mictilt/go-qrcode/writer/standard"
+	"github.com/Mictilt/go-qrcode/writer/standard/shapes"
 )
 
 func HChainBlock(ctx *standard.DrawContext) {
@@ -43,7 +43,7 @@ func main() {
 	shape := shapes.Assemble(shapes.RoundedFinder(), shapes.LiquidBlock())
 	//shape := shapes.Assemble(shapes.RoundedFinder(), HChainBlock)
 
-	qrc, err := qrcode.New(`https://github.com/yeqown/go-qrcode`)
+	qrc, err := qrcode.New(`https://github.com/Mictilt/go-qrcode`)
 	if err != nil {
 		panic(err)
 	}

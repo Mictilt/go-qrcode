@@ -3,12 +3,12 @@ package main
 import (
 	"image/color"
 
-	"github.com/yeqown/go-qrcode/v2"
-	"github.com/yeqown/go-qrcode/writer/standard"
+	"github.com/Mictilt/go-qrcode/v2"
+	"github.com/Mictilt/go-qrcode/writer/standard"
 )
 
 func main() {
-	qrc, err := qrcode.NewWith("https://github.com/yeqown/go-qrcode", qrcode.WithErrorCorrectionLevel(qrcode.ErrorCorrectionLow))
+	qrc, err := qrcode.NewWith("https://github.com/Mictilt/go-qrcode", qrcode.WithErrorCorrectionLevel(qrcode.ErrorCorrectionLow))
 	if err != nil {
 		panic(err)
 	}

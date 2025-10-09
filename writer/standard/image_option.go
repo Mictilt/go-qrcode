@@ -5,7 +5,7 @@ import (
 	"image"
 	"image/color"
 
-	"github.com/yeqown/go-qrcode/v2"
+	"github.com/Mictilt/go-qrcode/v2"
 )
 
 // QRColors represents the color configuration for QR code elements.

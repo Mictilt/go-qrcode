@@ -3,12 +3,12 @@ package main
 import (
 	"image/color"
 
-	"github.com/yeqown/go-qrcode/v2"
-	"github.com/yeqown/go-qrcode/writer/standard"
+	"github.com/Mictilt/go-qrcode/v2"
+	"github.com/Mictilt/go-qrcode/writer/standard"
 )
 
 func main() {
-	qrc, err := qrcode.NewWith("https://github.com/yeqown/go-qrcode",
+	qrc, err := qrcode.NewWith("https://github.com/Mictilt/go-qrcode",
 		qrcode.WithEncodingMode(qrcode.EncModeByte),
 		qrcode.WithErrorCorrectionLevel(qrcode.ErrorCorrectionQuart),
 	)
@@ -37,7 +37,7 @@ func main() {
 	// standard.WithFinderColor(color.RGBA{R: 204, G: 0, B: 0, A: 255}),
 
 	// NEW: You can also use the QRColors struct to set both colors at once
-	qrc2, err := qrcode.NewWith("https://github.com/yeqown/go-qrcode/new-feature",
+	qrc2, err := qrcode.NewWith("https://github.com/Mictilt/go-qrcode/new-feature",
 		qrcode.WithEncodingMode(qrcode.EncModeByte),
 		qrcode.WithErrorCorrectionLevel(qrcode.ErrorCorrectionQuart),
 	)

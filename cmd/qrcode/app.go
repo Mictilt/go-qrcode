@@ -5,9 +5,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/yeqown/go-qrcode/v2"
-	"github.com/yeqown/go-qrcode/writer/standard"
-	"github.com/yeqown/go-qrcode/writer/terminal"
+	"github.com/Mictilt/go-qrcode/v2"
+	"github.com/Mictilt/go-qrcode/writer/standard"
+	"github.com/Mictilt/go-qrcode/writer/terminal"
 
 	"github.com/pkg/errors"
 	"github.com/urfave/cli/v2"

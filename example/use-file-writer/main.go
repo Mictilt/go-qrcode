@@ -3,8 +3,8 @@ package main
 import (
 	"os"
 
-	"github.com/yeqown/go-qrcode/v2"
-	"github.com/yeqown/go-qrcode/writer/file"
+	"github.com/Mictilt/go-qrcode/v2"
+	"github.com/Mictilt/go-qrcode/writer/file"
 )
 
 func main() {

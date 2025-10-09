@@ -8,8 +8,8 @@ import (
 	"syscall/js"
 
 	"github.com/pkg/errors"
-	qrcode "github.com/yeqown/go-qrcode/v2"
-	stdw "github.com/yeqown/go-qrcode/writer/standard"
+	qrcode "github.com/Mictilt/go-qrcode/v2"
+	stdw "github.com/Mictilt/go-qrcode/writer/standard"
 )
 
 func main() {

@@ -74,6 +74,84 @@ func WithFgColorRGBHex(hex string) ImageOption {
 	})
 }
 
+// WithDataColor sets the color of every block except finder blocks
+func WithDataColor(c color.Color) ImageOption {
+	return newFuncOption(func(oo *outputImageOptions) {
+		if c == nil {
+			return
+		}
+		rgba := parseFromColor(c)
+		if oo.qrColors == nil {
+			oo.qrColors = &QRColors{}
+		}
+		oo.qrColors = oo.qrColors.withDataColor(rgba)
+	})
+}
+
+// WithDataColorRGBHex sets the color of every block except finder blocks
+func WithDataColorRGBHex(hex string) ImageOption {
+	return newFuncOption(func(oo *outputImageOptions) {
+		if oo.qrColors == nil {
+			oo.qrColors = &QRColors{}
+		}
+		c := parseFromHex(hex)
+		oo.qrColors = oo.qrColors.withDataColor(c)
+	})
+}
+
+// WithFinderColor sets the color of finder blocks
+func WithFinderColor(c color.Color) ImageOption {
+	return newFuncOption(func(oo *outputImageOptions) {
+		if c == nil {
+			return
+		}
+		rgba := parseFromColor(c)
+		if oo.qrColors == nil {
+			oo.qrColors = &QRColors{}
+		}
+		oo.qrColors = oo.qrColors.withFinderColor(rgba)
+	})
+}
+
+// WithFinderColorRGBHex sets the color of finder blocks
+func WithFinderColorRGBHex(hex string) ImageOption {
+	return newFuncOption(func(oo *outputImageOptions) {
+		if oo.qrColors == nil {
+			oo.qrColors = &QRColors{}
+		}
+		c := parseFromHex(hex)
+		oo.qrColors = oo.qrColors.withFinderColor(c)
+	})
+}
+
+// WithQRColors sets both data and finder colors using a QRColors struct.
+// If qrColors is nil, both colors will use the qrColor.
+// If only one field is set in QRColors, the other will use qrColor.
+func WithQRColors(qrColors *QRColors) ImageOption {
+	return newFuncOption(func(oo *outputImageOptions) {
+		oo.qrColors = qrColors
+	})
+}
+
+// WithQRColor sets both data and finder colors to the same color
+func WithQRColor(c color.Color) ImageOption {
+	return newFuncOption(func(oo *outputImageOptions) {
+		if c == nil {
+			return
+		}
+		rgba := parseFromColor(c)
+		oo.qrColors = newQRColors(rgba)
+	})
+}
+
+// WithQRColorRGBHex sets both data and finder colors to the same color using hex string
+func WithQRColorRGBHex(hex string) ImageOption {
+	return newFuncOption(func(oo *outputImageOptions) {
+		rgba := parseFromHex(hex)
+		oo.qrColors = newQRColors(rgba)
+	})
+}
+
 // WithFgGradient QR gradient
 func WithFgGradient(g *LinearGradient) ImageOption {
 	return newFuncOption(func(oo *outputImageOptions) {

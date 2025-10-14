@@ -1,6 +1,6 @@
 package shapes
 
-import "github.com/Mictilt/go-qrcode/writer/standard"
+import "github.com/yeqown/go-qrcode/writer/standard"
 
 // RoundedFinder returns a function that renders the QR code's finder pattern
 // with rounded transitions at the corners

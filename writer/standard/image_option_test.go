@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/Mictilt/go-qrcode/v2"
+	"github.com/yeqown/go-qrcode/v2"
 )
 
 func Test_stateRGBA(t *testing.T) {

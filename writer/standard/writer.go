@@ -8,8 +8,8 @@ import (
 	"log"
 	"os"
 
-	"github.com/Mictilt/go-qrcode/v2"
-	"github.com/Mictilt/go-qrcode/writer/standard/imgkit"
+	"github.com/yeqown/go-qrcode/v2"
+	"github.com/yeqown/go-qrcode/writer/standard/imgkit"
 
 	"github.com/fogleman/gg"
 	"github.com/pkg/errors"

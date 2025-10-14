@@ -1,4 +1,4 @@
-module github.com/Mictilt/go-qrcode/writer/standard
+module github.com/yeqown/go-qrcode/writer/standard
 
 go 1.17
 
@@ -6,7 +6,7 @@ require (
 	github.com/fogleman/gg v1.3.0
 	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.7.0
-	github.com/Mictilt/go-qrcode/v2 v2.2.5
+	github.com/yeqown/go-qrcode/v2 v2.2.5
 	golang.org/x/image v0.10.0
 )
 
@@ -18,4 +18,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.0 // indirect
 )
 
-//replace github.com/Mictilt/go-qrcode/v2 => ../../
+replace github.com/yeqown/go-qrcode/v2 => ../../

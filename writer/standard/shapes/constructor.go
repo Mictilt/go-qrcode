@@ -1,6 +1,6 @@
 package shapes
 
-import "github.com/Mictilt/go-qrcode/writer/standard"
+import "github.com/yeqown/go-qrcode/writer/standard"
 
 // ComposableShape implements the standard.IShape interface by delegating
 // drawing behavior to externally supplied functions.

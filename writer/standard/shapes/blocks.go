@@ -1,6 +1,6 @@
 package shapes
 
-import "github.com/Mictilt/go-qrcode/writer/standard"
+import "github.com/yeqown/go-qrcode/writer/standard"
 
 // LiquidBlock returns a drawing function that renders QR-code-like blocks
 // with smooth, organic, fluid transitions based on neighboring cell presence.

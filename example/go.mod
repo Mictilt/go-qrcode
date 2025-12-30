@@ -20,3 +20,11 @@ require (
 	github.com/yeqown/reedsolomon v1.0.0 // indirect
 	golang.org/x/image v0.24.0 // indirect
 )
+
+replace (
+	github.com/yeqown/go-qrcode => ../
+	github.com/yeqown/go-qrcode/v2 => ../
+	github.com/yeqown/go-qrcode/writer/file => ../writer/file
+	github.com/yeqown/go-qrcode/writer/standard => ../writer/standard
+	github.com/yeqown/go-qrcode/writer/terminal => ../writer/terminal
+)

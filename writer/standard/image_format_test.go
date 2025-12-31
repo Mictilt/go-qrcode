@@ -45,3 +45,14 @@ func Test_PNG_Encoder(t *testing.T) {
 		t.FailNow()
 	}
 }
+
+func Test_SVG_Encoder(t *testing.T) {
+	img := newImage()
+
+	fd, _ := os.OpenFile("./testdata/encoder_SVG.svg", os.O_TRUNC|os.O_CREATE|os.O_RDWR, 0666)
+	err := svgEncoder{}.Encode(fd, img)
+	if err != nil {
+		t.Error(err)
+		t.FailNow()
+	}
+}

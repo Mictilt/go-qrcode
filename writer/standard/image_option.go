@@ -8,6 +8,55 @@ import (
 	"github.com/yeqown/go-qrcode/v2"
 )
 
+// QRColors represents the color configuration for QR code elements.
+// Both Data and Finder fields are optional - if not set, they default to the qrColor.
+type QRColors struct {
+	Data   *color.RGBA // Color for data blocks and other non-finder elements
+	Finder *color.RGBA // Color for finder patterns
+}
+
+// newQRColors creates a QRColors with both colors set to the same value
+func newQRColors(c color.RGBA) *QRColors {
+	return &QRColors{
+		Data:   &c,
+		Finder: &c,
+	}
+}
+
+// withDataColor sets the data color, preserving existing finder color
+func (qc *QRColors) withDataColor(c color.RGBA) *QRColors {
+	if qc == nil {
+		qc = &QRColors{}
+	}
+	qc.Data = &c
+	return qc
+}
+
+// withFinderColor sets the finder color, preserving existing data color
+func (qc *QRColors) withFinderColor(c color.RGBA) *QRColors {
+	if qc == nil {
+		qc = &QRColors{}
+	}
+	qc.Finder = &c
+	return qc
+}
+
+// getDataColor returns the data color, or defaultColor if not set
+func (qc *QRColors) getDataColor(defaultColor color.RGBA) color.RGBA {
+	if qc != nil && qc.Data != nil {
+		return *qc.Data
+	}
+	return defaultColor
+}
+
+// getFinderColor returns the finder color, or defaultColor if not set
+func (qc *QRColors) getFinderColor(defaultColor color.RGBA) color.RGBA {
+	if qc != nil && qc.Finder != nil {
+		return *qc.Finder
+	}
+	return defaultColor
+}
+
 type ImageOption interface {
 	apply(o *outputImageOptions)
 }
@@ -18,6 +67,7 @@ func defaultOutputImageOption() *outputImageOptions {
 		bgColor:            color_WHITE, // white
 		bgTransparent:      false,       // not transparent
 		qrColor:            color_BLACK, // black
+		qrColors:           nil,         // nil means use qrColor for both data and finder
 		logo:               nil,         //
 		logoSizeMultiplier: 5,
 		qrWidth:            20,              //
@@ -36,6 +86,10 @@ type outputImageOptions struct {
 
 	// qrColor is the foreground color of the QR code.
 	qrColor color.RGBA
+
+	// qrColors contains color configuration for data and finder elements.
+	// If not set, both data and finder elements use qrColor.
+	qrColors *QRColors
 
 	// qrGradient is an optional linear gradient to apply to QR modules instead of a solid color.
 	qrGradient *LinearGradient
@@ -142,19 +196,24 @@ var (
 func (oo *outputImageOptions) translateToRGBA(v qrcode.QRValue) (rgba color.RGBA) {
 	// TODO(@yeqown): use _STATE_MAPPING to replace this function while in debug mode
 	// or some special flag.
-	if v.IsSet() {
-		rgba = oo.qrColor
+
+	if !v.IsSet() {
+		if oo.bgTransparent {
+			(&oo.bgColor).A = 0x00
+			// color.RGBA is pre-multiplied by alpha, so set RGB to 0 when fully transparent.
+			(&oo.bgColor).R = 0x00
+			(&oo.bgColor).G = 0x00
+			(&oo.bgColor).B = 0x00
+		}
+		rgba = oo.bgColor
 		return rgba
 	}
 
-	if oo.bgTransparent {
-		(&oo.bgColor).A = 0x00
-		// color.RGBA is pre-multiplied by alpha, so set RGB to 0 when fully transparent.
-		(&oo.bgColor).R = 0x00
-		(&oo.bgColor).G = 0x00
-		(&oo.bgColor).B = 0x00
+	if v.Type() == qrcode.QRType_FINDER {
+		rgba = oo.qrColors.getFinderColor(oo.qrColor)
+	} else {
+		rgba = oo.qrColors.getDataColor(oo.qrColor)
 	}
-	rgba = oo.bgColor
 
 	return rgba
 }

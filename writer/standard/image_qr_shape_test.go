@@ -18,12 +18,12 @@ func Test_rectangle_Draw(t *testing.T) {
 	dc.Fill()
 
 	ctx := &DrawContext{
-		Context: dc,
-		x:       0.0,
-		y:       0.0,
-		w:       50,
-		h:       50,
-		color:   color.Black,
+		GraphicsContext: &GGContextWrapper{Context: dc},
+		x:               0.0,
+		y:               0.0,
+		w:               50,
+		h:               50,
+		color:           color.Black,
 	}
 	_shapeRectangle.Draw(ctx)
 
@@ -44,12 +44,12 @@ func Test_circle_Draw(t *testing.T) {
 	dc.Fill()
 
 	ctx := &DrawContext{
-		Context: dc,
-		x:       0.0,
-		y:       0.0,
-		w:       50,
-		h:       50,
-		color:   color.Black,
+		GraphicsContext: &GGContextWrapper{Context: dc},
+		x:               0.0,
+		y:               0.0,
+		w:               50,
+		h:               50,
+		color:           color.Black,
 	}
 	_shapeCircle.Draw(ctx)
 

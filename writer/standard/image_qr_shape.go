@@ -19,9 +19,98 @@ type IShape interface {
 	DrawFinder(ctx *DrawContext)
 }
 
+// GraphicsContext defines the interface for graphics operations
+type GraphicsContext interface {
+	MoveTo(x, y float64)
+	LineTo(x, y float64)
+	QuadraticTo(cx, cy, x, y float64)
+	ClosePath()
+	DrawCircle(cx, cy, radius float64)
+	DrawRectangle(x, y, w, h float64)
+	SetColor(c color.Color)
+	Fill()
+	SetDash(dashes ...float64)
+	SetLineWidth(lineWidth float64)
+	SetLineCap(lineCap gg.LineCap)
+	SetLineCapSquare()
+	Stroke()
+	SetFillRuleEvenOdd()
+	NewSubPath()
+	SetFillRuleWinding()
+}
+
+// GGContextWrapper wraps gg.Context to implement GraphicsContext
+type GGContextWrapper struct {
+	*gg.Context
+}
+
+func (wrapper *GGContextWrapper) MoveTo(x, y float64) {
+	wrapper.Context.MoveTo(x, y)
+}
+
+func (wrapper *GGContextWrapper) LineTo(x, y float64) {
+	wrapper.Context.LineTo(x, y)
+}
+
+func (wrapper *GGContextWrapper) QuadraticTo(cx, cy, x, y float64) {
+	wrapper.Context.QuadraticTo(cx, cy, x, y)
+}
+
+func (wrapper *GGContextWrapper) ClosePath() {
+	wrapper.Context.ClosePath()
+}
+
+func (wrapper *GGContextWrapper) DrawCircle(cx, cy, radius float64) {
+	wrapper.Context.DrawCircle(cx, cy, radius)
+}
+
+func (wrapper *GGContextWrapper) DrawRectangle(x, y, width, height float64) {
+	wrapper.Context.DrawRectangle(x, y, width, height)
+}
+
+func (wrapper *GGContextWrapper) SetColor(c color.Color) {
+	wrapper.Context.SetColor(c)
+}
+
+func (wrapper *GGContextWrapper) Fill() {
+	wrapper.Context.Fill()
+}
+
+func (wrapper *GGContextWrapper) SetDash(dashes ...float64) {
+	wrapper.Context.SetDash(dashes...)
+}
+
+func (wrapper *GGContextWrapper) SetLineWidth(lineWidth float64) {
+	wrapper.Context.SetLineWidth(lineWidth)
+}
+
+func (wrapper *GGContextWrapper) SetLineCap(lineCap gg.LineCap) {
+	wrapper.Context.SetLineCap(lineCap)
+}
+
+func (wrapper *GGContextWrapper) SetLineCapSquare() {
+	wrapper.Context.SetLineCapSquare()
+}
+
+func (wrapper *GGContextWrapper) Stroke() {
+	wrapper.Context.Stroke()
+}
+
+func (wrapper *GGContextWrapper) SetFillRuleEvenOdd() {
+	wrapper.Context.SetFillRuleEvenOdd()
+}
+
+func (wrapper *GGContextWrapper) NewSubPath() {
+	wrapper.Context.NewSubPath()
+}
+
+func (wrapper *GGContextWrapper) SetFillRuleWinding() {
+	wrapper.Context.SetFillRuleWinding()
+}
+
 // DrawContext is a rectangle area
 type DrawContext struct {
-	*gg.Context
+	GraphicsContext
 
 	x, y float64
 	w, h int

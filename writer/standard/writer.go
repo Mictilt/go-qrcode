@@ -97,8 +97,19 @@ func drawTo(w io.Writer, mat qrcode.Matrix, option *outputImageOptions) (err err
 	img := draw(mat, option)
 
 	// DONE(@yeqown): support file format specified config option
-	if err = option.imageEncoder.Encode(w, img); err != nil {
-		err = fmt.Errorf("imageEncoder.Encode failed: %v", err)
+	// Try to use encoder with matrix if available (for SVG shape generation)
+	if encoderWithMatrix, ok := option.imageEncoder.(ImageEncoderWithMatrix); ok {
+		if err = encoderWithMatrix.EncodeMatrix(w, mat, option); err != nil {
+			err = fmt.Errorf("imageEncoder.EncodeMatrix failed: %v", err)
+		}
+	} else if encoderWithOpts, ok := option.imageEncoder.(ImageEncoderWithOptions); ok {
+		if err = encoderWithOpts.EncodeWithOptions(w, img, option); err != nil {
+			err = fmt.Errorf("imageEncoder.EncodeWithOptions failed: %v", err)
+		}
+	} else {
+		if err = option.imageEncoder.Encode(w, img); err != nil {
+			err = fmt.Errorf("imageEncoder.Encode failed: %v", err)
+		}
 	}
 
 	return
@@ -120,12 +131,12 @@ func draw(mat qrcode.Matrix, opt *outputImageOptions) image.Image {
 
 	// qrcode block draw context
 	ctx := &DrawContext{
-		Context: dc,
-		x:       0.0,
-		y:       0.0,
-		w:       opt.qrBlockWidth(),
-		h:       opt.qrBlockWidth(),
-		color:   color.Black,
+		GraphicsContext: &GGContextWrapper{Context: dc},
+		x:               0.0,
+		y:               0.0,
+		w:               opt.qrBlockWidth(),
+		h:               opt.qrBlockWidth(),
+		color:           color.Black,
 	}
 	shape := opt.getShape()
 
@@ -193,9 +204,9 @@ func draw(mat qrcode.Matrix, opt *outputImageOptions) image.Image {
 			}
 
 			ctx2 := &DrawContext{
-				Context: ctx.Context,
-				w:       int(halftoneW),
-				h:       int(halftoneW),
+				GraphicsContext: ctx.GraphicsContext,
+				w:               int(halftoneW),
+				h:               int(halftoneW),
 			}
 			// only halftone image enabled and current block is Data.
 			for i := 0; i < 3; i++ {
@@ -302,7 +313,7 @@ func halftoneColor(halftoneImage image.Image, transparent bool, x, y int) color.
 		return color.RGBA{R: 255, G: 255, B: 255, A: 255}
 	}
 
-	return color.RGBA{A: 255}
+	return color.RGBA{R: 0, G: 0, B: 0, A: 255}
 }
 
 func validLogoImage(qrWidth, qrHeight, logoWidth, logoHeight, logoSizeMultiplier int) bool {

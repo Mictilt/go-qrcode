@@ -9,6 +9,7 @@ import (
 	"os"
 
 	"github.com/yeqown/go-qrcode/writer/standard/imgkit"
+	drawpkg "golang.org/x/image/draw"
 )
 
 // funcOption wraps a function that modifies outputImageOptions into an
@@ -71,6 +72,84 @@ func WithFgColor(c color.Color) ImageOption {
 func WithFgColorRGBHex(hex string) ImageOption {
 	return newFuncOption(func(oo *outputImageOptions) {
 		oo.qrColor = parseFromHex(hex)
+	})
+}
+
+// WithDataColor sets the color of every block except finder blocks
+func WithDataColor(c color.Color) ImageOption {
+	return newFuncOption(func(oo *outputImageOptions) {
+		if c == nil {
+			return
+		}
+		rgba := parseFromColor(c)
+		if oo.qrColors == nil {
+			oo.qrColors = &QRColors{}
+		}
+		oo.qrColors = oo.qrColors.withDataColor(rgba)
+	})
+}
+
+// WithDataColorRGBHex sets the color of every block except finder blocks
+func WithDataColorRGBHex(hex string) ImageOption {
+	return newFuncOption(func(oo *outputImageOptions) {
+		if oo.qrColors == nil {
+			oo.qrColors = &QRColors{}
+		}
+		c := parseFromHex(hex)
+		oo.qrColors = oo.qrColors.withDataColor(c)
+	})
+}
+
+// WithFinderColor sets the color of finder blocks
+func WithFinderColor(c color.Color) ImageOption {
+	return newFuncOption(func(oo *outputImageOptions) {
+		if c == nil {
+			return
+		}
+		rgba := parseFromColor(c)
+		if oo.qrColors == nil {
+			oo.qrColors = &QRColors{}
+		}
+		oo.qrColors = oo.qrColors.withFinderColor(rgba)
+	})
+}
+
+// WithFinderColorRGBHex sets the color of finder blocks
+func WithFinderColorRGBHex(hex string) ImageOption {
+	return newFuncOption(func(oo *outputImageOptions) {
+		if oo.qrColors == nil {
+			oo.qrColors = &QRColors{}
+		}
+		c := parseFromHex(hex)
+		oo.qrColors = oo.qrColors.withFinderColor(c)
+	})
+}
+
+// WithQRColors sets both data and finder colors using a QRColors struct.
+// If qrColors is nil, both colors will use the qrColor.
+// If only one field is set in QRColors, the other will use qrColor.
+func WithQRColors(qrColors *QRColors) ImageOption {
+	return newFuncOption(func(oo *outputImageOptions) {
+		oo.qrColors = qrColors
+	})
+}
+
+// WithQRColor sets both data and finder colors to the same color
+func WithQRColor(c color.Color) ImageOption {
+	return newFuncOption(func(oo *outputImageOptions) {
+		if c == nil {
+			return
+		}
+		rgba := parseFromColor(c)
+		oo.qrColors = newQRColors(rgba)
+	})
+}
+
+// WithQRColorRGBHex sets both data and finder colors to the same color using hex string
+func WithQRColorRGBHex(hex string) ImageOption {
+	return newFuncOption(func(oo *outputImageOptions) {
+		rgba := parseFromHex(hex)
+		oo.qrColors = newQRColors(rgba)
 	})
 }
 
@@ -138,6 +217,73 @@ func WithLogoImageFilePNG(f string) ImageOption {
 	})
 }
 
+// New function not from standard package
+func WithLogoImageAdaptiveFileJPEG(f string, logoSizeMultiplier int, qrWidth uint8) ImageOption {
+	return newFuncOption(func(oo *outputImageOptions) {
+		fd, err := os.Open(f)
+		if err != nil {
+			fmt.Printf("could not open file(%s), error=%v\n", f, err)
+			return
+		}
+		defer fd.Close()
+		img, err := jpeg.Decode(fd)
+		if err != nil {
+			fmt.Printf("could not open file(%s), error=%v\n", f, err)
+			return
+		}
+		logoBounds := img.Bounds()
+		logoWidthOriginal := logoBounds.Dx()
+		logoHeightOriginal := logoBounds.Dy()
+
+		var logoWidth, logoHeight int
+		if logoWidthOriginal > logoHeightOriginal {
+			// Use logo size multiplier to calculate the logo size
+			logoWidth = int(float32(int(qrWidth)*25) / float32(logoSizeMultiplier))
+			logoHeight = logoWidth * logoHeightOriginal / logoWidthOriginal
+		} else {
+			logoHeight = int(float32(int(qrWidth)*25) / float32(logoSizeMultiplier))
+			logoWidth = logoHeight * logoWidthOriginal / logoHeightOriginal
+		}
+		
+
+		// Resize the image instead of using SubImage
+		resized := image.NewRGBA(image.Rect(0, 0, int(logoWidth), int(logoHeight)))
+		drawpkg.BiLinear.Scale(resized, resized.Bounds(), img, img.Bounds(), drawpkg.Over, nil)
+		oo.logo = resized
+	})
+}
+
+// New function not from standard package
+func WithLogoImageAdaptiveFilePNG(f string, logoSizeMultiplier int, qrWidth uint8) ImageOption {
+	return newFuncOption(func(oo *outputImageOptions) {
+		fd, err := os.Open(f)
+		if err != nil {
+			fmt.Printf("could not open file(%s), error=%v\n", f, err)
+			return
+		}
+		defer fd.Close()
+		img, err := png.Decode(fd)
+		if err != nil {
+			fmt.Printf("could not open file(%s), error=%v\n", f, err)
+			return
+		}
+		logoBounds := img.Bounds()
+		logoWidthOriginal := logoBounds.Dx()
+		logoHeightOriginal := logoBounds.Dy()
+		var logoWidth, logoHeight int
+		if logoWidthOriginal > logoHeightOriginal {
+			logoWidth = int(float32(int(qrWidth)*25) / float32(logoSizeMultiplier))
+			logoHeight = int(float32(logoWidth) * float32(logoHeightOriginal) / float32(logoWidthOriginal))
+		} else {
+			logoHeight = int(float32(int(qrWidth)*25) / float32(logoSizeMultiplier))
+			logoWidth = int(float32(logoHeight) * float32(logoWidthOriginal) / float32(logoHeightOriginal))
+		}
+		resized := image.NewRGBA(image.Rect(0, 0, logoWidth, logoHeight))
+		drawpkg.BiLinear.Scale(resized, resized.Bounds(), img, img.Bounds(), drawpkg.Over, nil)
+		oo.logo = resized
+	})
+}
+
 // WithQRWidth specify width of each qr block
 func WithQRWidth(width uint8) ImageOption {
 	return newFuncOption(func(oo *outputImageOptions) {
@@ -159,9 +305,9 @@ func WithCustomShape(shape IShape) ImageOption {
 	})
 }
 
-// WithBuiltinImageEncoder option includes: JPEG_FORMAT as default, PNG_FORMAT.
+// WithBuiltinImageEncoder option includes: JPEG_FORMAT as default, PNG_FORMAT, SVG_FORMAT.
 // This works like WithBuiltinImageEncoder, the different between them is
-// formatTyp is enumerated in (JPEG_FORMAT, PNG_FORMAT)
+// formatTyp is enumerated in (JPEG_FORMAT, PNG_FORMAT, SVG_FORMAT)
 func WithBuiltinImageEncoder(format formatTyp) ImageOption {
 	return newFuncOption(func(oo *outputImageOptions) {
 		var encoder ImageEncoder
@@ -170,6 +316,8 @@ func WithBuiltinImageEncoder(format formatTyp) ImageOption {
 			encoder = jpegEncoder{}
 		case PNG_FORMAT:
 			encoder = pngEncoder{}
+		case SVG_FORMAT:
+			encoder = svgEncoder{}
 		default:
 			panic("Not supported file format")
 		}

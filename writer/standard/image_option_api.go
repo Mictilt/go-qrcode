@@ -218,7 +218,10 @@ func WithLogoImageFilePNG(f string) ImageOption {
 }
 
 // New function not from standard package
-func WithLogoImageAdaptiveFileJPEG(f string, logoSizeMultiplier int, qrWidth uint8) ImageOption {
+// WithLogoImageAdaptiveFileJPEG loads a JPEG image and scales it using high-quality
+// CatmullRom (bicubic) interpolation for the best visual result.
+// qrModules is the QR code dimension in modules (use qrc.Dimension() to get this value).
+func WithLogoImageAdaptiveFileJPEG(f string, logoSizeMultiplier int, qrWidth uint8, qrModules int) ImageOption {
 	return newFuncOption(func(oo *outputImageOptions) {
 		fd, err := os.Open(f)
 		if err != nil {
@@ -228,33 +231,51 @@ func WithLogoImageAdaptiveFileJPEG(f string, logoSizeMultiplier int, qrWidth uin
 		defer fd.Close()
 		img, err := jpeg.Decode(fd)
 		if err != nil {
-			fmt.Printf("could not open file(%s), error=%v\n", f, err)
+			fmt.Printf("could not decode JPEG file(%s), error=%v\n", f, err)
 			return
 		}
+
 		logoBounds := img.Bounds()
-		logoWidthOriginal := logoBounds.Dx()
-		logoHeightOriginal := logoBounds.Dy()
+		logoWidthOriginal := float64(logoBounds.Dx())
+		logoHeightOriginal := float64(logoBounds.Dy())
+
+		// Calculate target size using actual QR module count
+		// QR total size in pixels = qrModules * qrWidth
+		// Logo should fit within 1/logoSizeMultiplier of the QR
+		qrTotalSize := float64(qrModules) * float64(qrWidth)
+		targetSize := (qrTotalSize / float64(logoSizeMultiplier))
 
 		var logoWidth, logoHeight int
 		if logoWidthOriginal > logoHeightOriginal {
-			// Use logo size multiplier to calculate the logo size
-			logoWidth = int(float32(int(qrWidth)*25) / float32(logoSizeMultiplier))
-			logoHeight = logoWidth * logoHeightOriginal / logoWidthOriginal
+			logoWidth = int(targetSize)
+			logoHeight = int(targetSize * logoHeightOriginal / logoWidthOriginal)
 		} else {
-			logoHeight = int(float32(int(qrWidth)*25) / float32(logoSizeMultiplier))
-			logoWidth = logoHeight * logoWidthOriginal / logoHeightOriginal
+			logoHeight = int(targetSize)
+			logoWidth = int(targetSize * logoWidthOriginal / logoHeightOriginal)
 		}
-		
 
-		// Resize the image instead of using SubImage
-		resized := image.NewRGBA(image.Rect(0, 0, int(logoWidth), int(logoHeight)))
-		drawpkg.BiLinear.Scale(resized, resized.Bounds(), img, img.Bounds(), drawpkg.Over, nil)
+		// Ensure minimum size of 1 pixel
+		if logoWidth < 1 {
+			logoWidth = 1
+		}
+		if logoHeight < 1 {
+			logoHeight = 1
+		}
+
+		// Use CatmullRom (bicubic) for highest quality scaling
+		// This preserves edges and details much better than BiLinear
+		resized := image.NewRGBA(image.Rect(0, 0, logoWidth, logoHeight))
+		drawpkg.CatmullRom.Scale(resized, resized.Bounds(), img, img.Bounds(), drawpkg.Over, nil)
 		oo.logo = resized
 	})
 }
 
 // New function not from standard package
-func WithLogoImageAdaptiveFilePNG(f string, logoSizeMultiplier int, qrWidth uint8) ImageOption {
+// WithLogoImageAdaptiveFilePNG loads a PNG image and scales it using high-quality
+// CatmullRom (bicubic) interpolation for the best visual result.
+// Properly preserves transparency/alpha channel.
+// qrModules is the QR code dimension in modules (use qrc.Dimension() to get this value).
+func WithLogoImageAdaptiveFilePNG(f string, logoSizeMultiplier int, qrWidth uint8, qrModules int) ImageOption {
 	return newFuncOption(func(oo *outputImageOptions) {
 		fd, err := os.Open(f)
 		if err != nil {
@@ -264,22 +285,41 @@ func WithLogoImageAdaptiveFilePNG(f string, logoSizeMultiplier int, qrWidth uint
 		defer fd.Close()
 		img, err := png.Decode(fd)
 		if err != nil {
-			fmt.Printf("could not open file(%s), error=%v\n", f, err)
+			fmt.Printf("could not decode PNG file(%s), error=%v\n", f, err)
 			return
 		}
+
 		logoBounds := img.Bounds()
-		logoWidthOriginal := logoBounds.Dx()
-		logoHeightOriginal := logoBounds.Dy()
+		logoWidthOriginal := float64(logoBounds.Dx())
+		logoHeightOriginal := float64(logoBounds.Dy())
+
+		// Calculate target size using actual QR module count
+		// QR total size in pixels = qrModules * qrWidth
+		// Logo should fit within 1/logoSizeMultiplier of the QR
+		qrTotalSize := float64(qrModules) * float64(qrWidth)
+		targetSize := (qrTotalSize / float64(logoSizeMultiplier))
+
 		var logoWidth, logoHeight int
 		if logoWidthOriginal > logoHeightOriginal {
-			logoWidth = int(float32(int(qrWidth)*25) / float32(logoSizeMultiplier))
-			logoHeight = int(float32(logoWidth) * float32(logoHeightOriginal) / float32(logoWidthOriginal))
+			logoWidth = int(targetSize)
+			logoHeight = int(targetSize * logoHeightOriginal / logoWidthOriginal)
 		} else {
-			logoHeight = int(float32(int(qrWidth)*25) / float32(logoSizeMultiplier))
-			logoWidth = int(float32(logoHeight) * float32(logoWidthOriginal) / float32(logoHeightOriginal))
+			logoHeight = int(targetSize)
+			logoWidth = int(targetSize * logoWidthOriginal / logoHeightOriginal)
 		}
-		resized := image.NewRGBA(image.Rect(0, 0, logoWidth, logoHeight))
-		drawpkg.BiLinear.Scale(resized, resized.Bounds(), img, img.Bounds(), drawpkg.Over, nil)
+
+		// Ensure minimum size of 1 pixel
+		if logoWidth < 1 {
+			logoWidth = 1
+		}
+		if logoHeight < 1 {
+			logoHeight = 1
+		}
+
+		// Use CatmullRom (bicubic) for highest quality scaling
+		// This preserves edges, details, and transparency much better than BiLinear
+		resized := image.NewNRGBA(image.Rect(0, 0, logoWidth, logoHeight))
+		drawpkg.CatmullRom.Scale(resized, resized.Bounds(), img, img.Bounds(), drawpkg.Over, nil)
 		oo.logo = resized
 	})
 }

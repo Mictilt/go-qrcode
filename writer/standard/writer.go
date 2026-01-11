@@ -215,9 +215,7 @@ func draw(mat qrcode.Matrix, opt *outputImageOptions) image.Image {
 					if i == 1 && j == 1 {
 						ctx2.color = ctx.color
 					} else {
-						patternDB := NewPatternDatabase(true)
-						pattern := patternDB.patterns[0]
-						ctx2.color = pattern.Grid[i][j]
+						ctx2.color = halftoneColor(halftoneImg, opt.bgTransparent, x*3+i, y*3+j)
 					}
 					shape.Draw(ctx2)
 				}

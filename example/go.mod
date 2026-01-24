@@ -11,6 +11,7 @@ require (
 )
 
 require (
+	github.com/ajstarks/svgo v0.0.0-20211024235047-1546f124cd8b // indirect
 	github.com/fogleman/gg v1.3.0 // indirect
 	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0 // indirect
 	github.com/mattn/go-runewidth v0.0.16 // indirect
@@ -22,7 +23,6 @@ require (
 )
 
 replace (
-	github.com/yeqown/go-qrcode => ../
 	github.com/yeqown/go-qrcode/v2 => ../
 	github.com/yeqown/go-qrcode/writer/file => ../writer/file
 	github.com/yeqown/go-qrcode/writer/standard => ../writer/standard

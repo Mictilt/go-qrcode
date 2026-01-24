@@ -1,34 +1,42 @@
 package imgkit
 
 import (
+	"golang.org/x/image/draw"
 	"image"
 	"image/color"
-
-	"golang.org/x/image/draw"
 )
 
 // Binaryzation process image with threshold value (0-255) and return new image.
-func Binaryzation(src image.Image, threshold uint8) image.Image {
+// If useOriginalColors is true, pixels are kept in their original color or set to black,
+// otherwise standard black/white binarization is applied.
+func Binaryzation(src image.Image, threshold uint8, useOriginalColors bool) image.Image {
 	if threshold < 0 || threshold > 255 {
 		threshold = 128
 	}
 
-	gray := Gray(src)
 	bounds := src.Bounds()
 	height, width := bounds.Max.Y-bounds.Min.Y, bounds.Max.X-bounds.Min.X
 
-	for i := 0; i < height; i++ {
-		for j := 0; j < width; j++ {
-			// var rgb int = int(gray[i][j][0]) + int(gray[i][j][1]) + int(gray[i][j][2])
-			if gray.At(j, i).(color.Gray).Y > threshold {
-				gray.Set(j, i, color.White)
-			} else {
-				gray.Set(j, i, color.Black)
+	if useOriginalColors {
+		// Create new image with same type as source to preserve colors
+		dst := image.NewRGBA(bounds)
+		draw.Draw(dst, bounds, src, bounds.Min, draw.Src)
+
+		return dst
+	} else {
+		// Original black/white binarization
+		gray := Gray(src)
+		for i := 0; i < height; i++ {
+			for j := 0; j < width; j++ {
+				if gray.At(j, i).(color.Gray).Y > threshold {
+					gray.Set(j, i, color.White)
+				} else {
+					gray.Set(j, i, color.Black)
+				}
 			}
 		}
+		return gray
 	}
-
-	return gray
 }
 
 func Gray(src image.Image) *image.Gray {

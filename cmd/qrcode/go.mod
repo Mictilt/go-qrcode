@@ -1,5 +1,4 @@
 module github.com/yeqown/go-qrcode/cmd/qrcode
-module github.com/yeqown/go-qrcode/cmd/qrcode
 
 go 1.19
 

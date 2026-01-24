@@ -59,7 +59,7 @@ func Test_New_WithOutputOption_Logo(t *testing.T) {
 		WithBgColorRGBHex("#b8de6f"),
 		WithFgColorRGBHex("#f1e189"),
 		WithLogoImageFileJPEG("./testdata/logo.jpeg"),
-		WithLogoImageAdaptiveFileJPEG("./testdata/logo.jpeg"),
+		WithLogoImageAdaptiveFileJPEG("./testdata/logo.jpeg", 5, 20, qrc.Dimension()),
 		//WithLogoImageFilePNG("./testdata/logo.png"), // png required
 	)
 	require.NoError(t, err)

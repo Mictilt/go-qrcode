@@ -148,6 +148,7 @@ func draw(mat qrcode.Matrix, opt *outputImageOptions) image.Image {
 		halftoneImg = imgkit.Binaryzation(
 			imgkit.Scale(opt.halftoneImg, image.Rect(0, 0, mat.Width()*3, mat.Width()*3), nil),
 			60,
+			false,
 		)
 
 		// _ = imgkit.Save(halftoneImg, "mask.jpeg")

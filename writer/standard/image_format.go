@@ -714,7 +714,7 @@ func (s svgEncoder) EncodeMatrix(w io.Writer, mat qrcode.Matrix, opts *outputIma
 				for j := 0; j < 3; j++ {
 					subX := float64(blockX) + float64(i)*halftoneW
 					subY := float64(blockY) + float64(j)*halftoneW
-					
+						
 					var subColor color.Color
 					if i == 1 && j == 1 {
 						subColor = drawCtx.color
@@ -727,7 +727,7 @@ func (s svgEncoder) EncodeMatrix(w io.Writer, mat qrcode.Matrix, opts *outputIma
 					r8, g8, b8, a8 := uint8(r>>8), uint8(g>>8), uint8(b>>8), uint8(a>>8)
 					
 					// Skip fully transparent pixels
-					if a8 == 0 {
+					if a8 == 0 || (r8 == 255 && g8 == 255 && b8 == 255) {
 						continue
 					}
 					

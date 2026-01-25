@@ -10,6 +10,7 @@ import (
 	"image/png"
 	"io"
 	"math"
+	"sort"
 	"strings"
 
 	"github.com/fogleman/gg"
@@ -401,7 +402,7 @@ func (s svgEncoder) EncodeWithOptions(w io.Writer, img image.Image, opts *output
 	}
 
 	_, err := fmt.Fprintf(w, `<?xml version="1.0" encoding="UTF-8"?>
-<svg width="%d" height="%d" xmlns="http://www.w3.org/2000/svg">
+<svg width="%d" height="%d" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg">
 `, width, height)
 	if err != nil {
 		return err
@@ -447,12 +448,71 @@ type rectInfo struct {
 }
 
 func optimizeRectangles(img image.Image, bounds image.Rectangle) []rectInfo {
-	var allRects []rectInfo
+	width := bounds.Dx()
+	height := bounds.Dy()
+	visited := make([]bool, width*height)
+	var rects []rectInfo
 
-	// First pass: create initial rectangles (horizontal runs)
+	// Helper to get linear index
+	getIndex := func(x, y int) int {
+		return (y-bounds.Min.Y)*width + (x - bounds.Min.X)
+	}
+
+	// PHASE 1: Scan for 3x3 Blocks (Initial Discovery)
+	for y := bounds.Min.Y; y <= bounds.Max.Y-3; y += 3 {
+		for x := bounds.Min.X; x <= bounds.Max.X-3; x += 3 {
+			c := img.At(x, y)
+			r, g, b, a := c.RGBA()
+			r8, g8, b8, a8 := uint8(r>>8), uint8(g>>8), uint8(b>>8), uint8(a>>8)
+
+			if a8 == 0 || (r8 == 255 && g8 == 255 && b8 == 255) {
+				continue
+			}
+
+			isUniform := true
+			// Check the 3x3 grid
+			for dy := 0; dy < 3; dy++ {
+				for dx := 0; dx < 3; dx++ {
+					if visited[getIndex(x+dx, y+dy)] {
+						isUniform = false
+						break
+					}
+					nc := img.At(x+dx, y+dy)
+					nr, ng, nb, na := nc.RGBA()
+					if uint8(nr>>8) != r8 || uint8(ng>>8) != g8 || uint8(nb>>8) != b8 || uint8(na>>8) != a8 {
+						isUniform = false
+						break
+					}
+				}
+				if !isUniform {
+					break
+				}
+			}
+
+			if isUniform {
+				rects = append(rects, rectInfo{
+					x: x, y: y, width: 3, height: 3,
+					r: r8, g: g8, b: b8, a: a8,
+				})
+				for dy := 0; dy < 3; dy++ {
+					for dx := 0; dx < 3; dx++ {
+						visited[getIndex(x+dx, y+dy)] = true
+					}
+				}
+			}
+		}
+	}
+
+	// PHASE 2: Clean up remaining pixels (Standard RLE)
 	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
 		x := bounds.Min.X
 		for x < bounds.Max.X {
+			idx := getIndex(x, y)
+			if visited[idx] {
+				x++
+				continue
+			}
+
 			c := img.At(x, y)
 			r, g, b, a := c.RGBA()
 			r8, g8, b8, a8 := uint8(r>>8), uint8(g>>8), uint8(b>>8), uint8(a>>8)
@@ -463,7 +523,11 @@ func optimizeRectangles(img image.Image, bounds image.Rectangle) []rectInfo {
 			}
 
 			startX := x
+			x++
 			for x < bounds.Max.X {
+				if visited[getIndex(x, y)] {
+					break
+				}
 				nextC := img.At(x, y)
 				nr, ng, nb, na := nextC.RGBA()
 				nr8, ng8, nb8, na8 := uint8(nr>>8), uint8(ng>>8), uint8(nb>>8), uint8(na>>8)
@@ -473,92 +537,77 @@ func optimizeRectangles(img image.Image, bounds image.Rectangle) []rectInfo {
 				x++
 			}
 
-			allRects = append(allRects, rectInfo{
+			rects = append(rects, rectInfo{
 				x: startX, y: y, width: x - startX, height: 1,
 				r: r8, g: g8, b: b8, a: a8,
 			})
 		}
 	}
 
-	// Second pass: merge touching rectangles
-	merged := true
-	for merged {
-		merged = false
-		var newRects []rectInfo
-		used := make([]bool, len(allRects))
+	if len(rects) == 0 {
+		return rects
+	}
 
-		for i := 0; i < len(allRects); i++ {
-			if used[i] {
-				continue
-			}
+	// PHASE 3: Horizontal Merge (Sort + Linear Scan)
+	// Sort by Y first, then X
+	sort.Slice(rects, func(i, j int) bool {
+		if rects[i].y != rects[j].y {
+			return rects[i].y < rects[j].y
+		}
+		return rects[i].x < rects[j].x
+	})
 
-			rect1 := allRects[i]
-			mergedThis := false
+	var mergedHorz []rectInfo
+	curr := rects[0]
 
-			for j := i + 1; j < len(allRects); j++ {
-				if used[j] {
-					continue
-				}
+	for i := 1; i < len(rects); i++ {
+		next := rects[i]
+		// Try to merge horizontally
+		if curr.y == next.y &&
+			curr.height == next.height &&
+			curr.x+curr.width == next.x &&
+			curr.r == next.r && curr.g == next.g && curr.b == next.b && curr.a == next.a {
+			// Merge
+			curr.width += next.width
+		} else {
+			// Push current and start new
+			mergedHorz = append(mergedHorz, curr)
+			curr = next
+		}
+	}
+	mergedHorz = append(mergedHorz, curr)
 
-				rect2 := allRects[j]
+	// PHASE 4: Vertical Merge (Sort + Linear Scan)
+	// Sort by X first, then Y
+	sort.Slice(mergedHorz, func(i, j int) bool {
+		if mergedHorz[i].x != mergedHorz[j].x {
+			return mergedHorz[i].x < mergedHorz[j].x
+		}
+		return mergedHorz[i].y < mergedHorz[j].y
+	})
 
-				if rect1.r != rect2.r || rect1.g != rect2.g || rect1.b != rect2.b || rect1.a != rect2.a {
-					continue
-				}
-
-				// Horizontal adjacency
-				if rect1.y == rect2.y && rect1.height == rect2.height {
-					if rect1.x+rect1.width == rect2.x || rect2.x+rect2.width == rect1.x {
-						newRects = append(newRects, rectInfo{
-							x:      min(rect1.x, rect2.x),
-							y:      rect1.y,
-							width:  rect1.width + rect2.width,
-							height: rect1.height,
-							r:      rect1.r, g: rect1.g, b: rect1.b, a: rect1.a,
-						})
-						used[i] = true
-						used[j] = true
-						merged = true
-						mergedThis = true
-						break
-					}
-				}
-
-				// Vertical adjacency
-				if rect1.x == rect2.x && rect1.width == rect2.width {
-					if rect1.y+rect1.height == rect2.y || rect2.y+rect2.height == rect1.y {
-						newRects = append(newRects, rectInfo{
-							x:      rect1.x,
-							y:      min(rect1.y, rect2.y),
-							width:  rect1.width,
-							height: rect1.height + rect2.height,
-							r:      rect1.r, g: rect1.g, b: rect1.b, a: rect1.a,
-						})
-						used[i] = true
-						used[j] = true
-						merged = true
-						mergedThis = true
-						break
-					}
-				}
-			}
-
-			if !mergedThis {
-				newRects = append(newRects, rect1)
+	var finalRects []rectInfo
+	if len(mergedHorz) > 0 {
+		curr = mergedHorz[0]
+		for i := 1; i < len(mergedHorz); i++ {
+			next := mergedHorz[i]
+			// Try to merge vertically
+			if curr.x == next.x &&
+				curr.width == next.width &&
+				curr.y+curr.height == next.y &&
+				curr.r == next.r && curr.g == next.g && curr.b == next.b && curr.a == next.a {
+				// Merge
+				curr.height += next.height
+			} else {
+				// Push current and start new
+				finalRects = append(finalRects, curr)
+				curr = next
 			}
 		}
-
-		allRects = newRects
+		finalRects = append(finalRects, curr)
 	}
 
-	return allRects
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
+	return finalRects
 }
 
 func (s svgEncoder) EncodeMatrix(w io.Writer, mat qrcode.Matrix, opts *outputImageOptions) error {
@@ -582,7 +631,7 @@ func (s svgEncoder) EncodeMatrix(w io.Writer, mat qrcode.Matrix, opts *outputIma
 	svgShape := getSVGShape(opts.getShape())
 
 	_, err := fmt.Fprintf(w, `<?xml version="1.0" encoding="UTF-8"?>
-<svg width="%d" height="%d" xmlns="http://www.w3.org/2000/svg">
+<svg width="%d" height="%d" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg">
 `, width, height)
 	if err != nil {
 		return err
@@ -640,9 +689,7 @@ func (s svgEncoder) EncodeMatrix(w io.Writer, mat qrcode.Matrix, opts *outputIma
 	}
 
 	mat.Iterate(qrcode.IterDirection_ROW, func(x int, y int, v qrcode.QRValue) {
-		if !v.IsSet() {
-			return
-		}
+		
 
 		if logoValid && opts.logoSafeZone &&
 			blockOverlapsLogo(x, y, opts.qrBlockWidth(), opts.borderWidths[3], opts.borderWidths[0],
@@ -652,39 +699,62 @@ func (s svgEncoder) EncodeMatrix(w io.Writer, mat qrcode.Matrix, opts *outputIma
 
 		blockX := x*opts.qrBlockWidth() + opts.borderWidths[3]
 		blockY := y*opts.qrBlockWidth() + opts.borderWidths[0]
-
+		neighbours := getNeighbours(bitmap, x, y)
+		drawCtx := &DrawContext{
+			x:          float64(blockX),
+			y:          float64(blockY),
+			w:          opts.qrBlockWidth(),
+			h:          opts.qrBlockWidth(),
+			color:      opts.translateToRGBA(v),
+			neighbours: neighbours,
+		}
 		// Handle halftone for data modules
 		if hasHalftone && v.Type() == qrcode.QRType_DATA {
 			for i := 0; i < 3; i++ {
 				for j := 0; j < 3; j++ {
-					halftoneX := x*3 + i
-					halftoneY := y*3 + j
-
-					// Get color from halftone image at this position
-					c := halftoneColor(halftoneImg, opts.bgTransparent, halftoneX, halftoneY)
-					r, g, b, a := c.RGBA()
-					r8, g8, b8, a8 := uint8(r>>8), uint8(g>>8), uint8(b>>8), uint8(a>>8)
-					
-					// Skip transparent or white pixels
-					if a8 == 0 || (r8 == 255 && g8 == 255 && b8 == 255) {
-						continue
-					}
-
-					// Use the halftone color directly (or gradient if enabled)
-					var fillStr string
-					if opts.qrGradient != nil {
-						fillStr = "url(#qrGradient)"
-					} else {
-						fillStr = fmt.Sprintf("#%02x%02x%02x", r8, g8, b8)
-					}
-
 					subX := float64(blockX) + float64(i)*halftoneW
 					subY := float64(blockY) + float64(j)*halftoneW
-
-					fmt.Fprintf(w, `<rect x="%.2f" y="%.2f" width="%.2f" height="%.2f" fill="%s"/>`,
-						subX, subY, halftoneW, halftoneW, fillStr)
+					
+					var subColor color.Color
+					if i == 1 && j == 1 {
+						subColor = drawCtx.color
+					} else {
+						subColor = halftoneColor(halftoneImg, opts.bgTransparent, x*3+i, y*3+j)
+					}
+					
+					// Get the fill string for this sub-block
+					r, g, b, a := subColor.RGBA()
+					r8, g8, b8, a8 := uint8(r>>8), uint8(g>>8), uint8(b>>8), uint8(a>>8)
+					
+					// Skip fully transparent pixels
+					if a8 == 0 {
+						continue
+					}
+					
+					subFillStr := fmt.Sprintf("#%02x%02x%02x", r8, g8, b8)
+					
+					// Create a DrawContext for this sub-block
+					ctx2 := &DrawContext{
+						GraphicsContext: drawCtx.GraphicsContext,
+						x:               subX,
+						y:               subY,
+						w:               int(halftoneW),
+						h:               int(halftoneW),
+						color:           subColor,
+						neighbours:      drawCtx.neighbours,
+					}
+					
+					// Generate the SVG path for this sub-block using the shape
+					pathData := svgShape.GenerateSVGPath(ctx2, false)
+					
+					// Write the sub-block
+					fmt.Fprintf(w, `<g fill="%s">%s</g>\n`, subFillStr, pathData)
 				}
 			}
+			return
+		}
+
+		if !v.IsSet() {
 			return
 		}
 
@@ -696,17 +766,6 @@ func (s svgEncoder) EncodeMatrix(w io.Writer, mat qrcode.Matrix, opts *outputIma
 			blockColor := opts.translateToRGBA(v)
 			r, g, b, _ := blockColor.RGBA()
 			fillStr = fmt.Sprintf("#%02x%02x%02x", uint8(r>>8), uint8(g>>8), uint8(b>>8))
-		}
-
-		neighbours := getNeighbours(bitmap, x, y)
-
-		drawCtx := &DrawContext{
-			x:          float64(blockX),
-			y:          float64(blockY),
-			w:          opts.qrBlockWidth(),
-			h:          opts.qrBlockWidth(),
-			color:      opts.translateToRGBA(v),
-			neighbours: neighbours,
 		}
 
 		var pathData string

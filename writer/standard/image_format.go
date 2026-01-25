@@ -1,6 +1,7 @@
 package standard
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/base64"
 	"fmt"
@@ -10,7 +11,6 @@ import (
 	"image/png"
 	"io"
 	"math"
-	"sort"
 	"strings"
 
 	"github.com/fogleman/gg"
@@ -387,6 +387,10 @@ func (s svgEncoder) Encode(w io.Writer, img image.Image) error {
 }
 
 func (s svgEncoder) EncodeWithOptions(w io.Writer, img image.Image, opts *outputImageOptions) error {
+	// Optimization: Use bufio to reduce IO syscalls
+	bw := bufio.NewWriter(w)
+	defer bw.Flush()
+
 	bounds := img.Bounds()
 	width := bounds.Dx()
 	height := bounds.Dy()
@@ -401,19 +405,20 @@ func (s svgEncoder) EncodeWithOptions(w io.Writer, img image.Image, opts *output
 		logoValid = validLogoImage(width, height, logoWidth, logoHeight, opts.logoSizeMultiplier)
 	}
 
-	_, err := fmt.Fprintf(w, `<?xml version="1.0" encoding="UTF-8"?>
+	// Use bw (buffered writer) instead of w
+	_, err := fmt.Fprintf(bw, `<?xml version="1.0" encoding="UTF-8"?>
 <svg width="%d" height="%d" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg">
 `, width, height)
 	if err != nil {
 		return err
 	}
 
-	_, err = fmt.Fprintf(w, `<rect width="%d" height="%d" fill="white"/>\n`, width, height)
+	_, err = fmt.Fprintf(bw, `<rect width="%d" height="%d" fill="white"/>\n`, width, height)
 	if err != nil {
 		return err
 	}
 
-	// Optimize rectangles
+	// Optimize rectangles using Greedy Meshing
 	rects := optimizeRectangles(img, bounds)
 	for _, rect := range rects {
 		if rect.a == 0 || (rect.r == 255 && rect.g == 255 && rect.b == 255) {
@@ -421,10 +426,10 @@ func (s svgEncoder) EncodeWithOptions(w io.Writer, img image.Image, opts *output
 		}
 
 		if rect.r == 0 && rect.g == 0 && rect.b == 0 {
-			_, err = fmt.Fprintf(w, `<rect x="%d" y="%d" width="%d" height="%d" fill="black"/>\n`,
+			_, err = fmt.Fprintf(bw, `<rect x="%d" y="%d" width="%d" height="%d" fill="black"/>\n`,
 				rect.x, rect.y, rect.width, rect.height)
 		} else {
-			_, err = fmt.Fprintf(w, `<rect x="%d" y="%d" width="%d" height="%d" fill="rgb(%d,%d,%d)"/>\n`,
+			_, err = fmt.Fprintf(bw, `<rect x="%d" y="%d" width="%d" height="%d" fill="rgb(%d,%d,%d)"/>\n`,
 				rect.x, rect.y, rect.width, rect.height, rect.r, rect.g, rect.b)
 		}
 		if err != nil {
@@ -433,12 +438,12 @@ func (s svgEncoder) EncodeWithOptions(w io.Writer, img image.Image, opts *output
 	}
 
 	if logoValid {
-		if err := embedLogoAsPNG(w, opts.logo, width, height, logoWidth, logoHeight); err != nil {
+		if err := embedLogoAsPNG(bw, opts.logo, width, height, logoWidth, logoHeight); err != nil {
 			// Skip logo if encoding fails
 		}
 	}
 
-	_, err = fmt.Fprintf(w, `</svg>`)
+	_, err = fmt.Fprintf(bw, `</svg>`)
 	return err
 }
 
@@ -447,173 +452,116 @@ type rectInfo struct {
 	r, g, b, a          uint8
 }
 
+// optimizeRectangles uses Greedy Meshing to combine adjacent uniform pixels
+// into the largest possible rectangles.
 func optimizeRectangles(img image.Image, bounds image.Rectangle) []rectInfo {
 	width := bounds.Dx()
 	height := bounds.Dy()
 	visited := make([]bool, width*height)
 	var rects []rectInfo
 
-	// Helper to get linear index
-	getIndex := func(x, y int) int {
-		return (y-bounds.Min.Y)*width + (x - bounds.Min.X)
+	// Check if we can use the fast path for RGBA images
+	rgbaImg, isRGBA := img.(*image.RGBA)
+
+	// Helper to get pixel components without interface overhead if possible
+	getPixel := func(x, y int) (uint8, uint8, uint8, uint8) {
+		if isRGBA {
+			offset := (y-rgbaImg.Rect.Min.Y)*rgbaImg.Stride + (x-rgbaImg.Rect.Min.X)*4
+			return rgbaImg.Pix[offset], rgbaImg.Pix[offset+1], rgbaImg.Pix[offset+2], rgbaImg.Pix[offset+3]
+		}
+		r, g, b, a := img.At(x, y).RGBA()
+		return uint8(r >> 8), uint8(g >> 8), uint8(b >> 8), uint8(a >> 8)
 	}
 
-	// PHASE 1: Scan for 3x3 Blocks (Initial Discovery)
-	for y := bounds.Min.Y; y <= bounds.Max.Y-3; y += 3 {
-		for x := bounds.Min.X; x <= bounds.Max.X-3; x += 3 {
-			c := img.At(x, y)
-			r, g, b, a := c.RGBA()
-			r8, g8, b8, a8 := uint8(r>>8), uint8(g>>8), uint8(b>>8), uint8(a>>8)
+	// Helper to check visited status
+	isVisited := func(x, y int) bool {
+		return visited[(y-bounds.Min.Y)*width+(x-bounds.Min.X)]
+	}
 
-			if a8 == 0 || (r8 == 255 && g8 == 255 && b8 == 255) {
-				continue
-			}
-
-			isUniform := true
-			// Check the 3x3 grid
-			for dy := 0; dy < 3; dy++ {
-				for dx := 0; dx < 3; dx++ {
-					if visited[getIndex(x+dx, y+dy)] {
-						isUniform = false
-						break
-					}
-					nc := img.At(x+dx, y+dy)
-					nr, ng, nb, na := nc.RGBA()
-					if uint8(nr>>8) != r8 || uint8(ng>>8) != g8 || uint8(nb>>8) != b8 || uint8(na>>8) != a8 {
-						isUniform = false
-						break
-					}
-				}
-				if !isUniform {
-					break
-				}
-			}
-
-			if isUniform {
-				rects = append(rects, rectInfo{
-					x: x, y: y, width: 3, height: 3,
-					r: r8, g: g8, b: b8, a: a8,
-				})
-				for dy := 0; dy < 3; dy++ {
-					for dx := 0; dx < 3; dx++ {
-						visited[getIndex(x+dx, y+dy)] = true
-					}
-				}
+	// Helper to mark a rectangle as visited
+	markVisited := func(x, y, w, h int) {
+		startY := y - bounds.Min.Y
+		startX := x - bounds.Min.X
+		for dy := 0; dy < h; dy++ {
+			offset := (startY + dy) * width
+			for dx := 0; dx < w; dx++ {
+				visited[offset+startX+dx] = true
 			}
 		}
 	}
 
-	// PHASE 2: Clean up remaining pixels (Standard RLE)
 	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
-		x := bounds.Min.X
-		for x < bounds.Max.X {
-			idx := getIndex(x, y)
-			if visited[idx] {
-				x++
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			if isVisited(x, y) {
 				continue
 			}
 
-			c := img.At(x, y)
-			r, g, b, a := c.RGBA()
-			r8, g8, b8, a8 := uint8(r>>8), uint8(g>>8), uint8(b>>8), uint8(a>>8)
+			r, g, b, a := getPixel(x, y)
 
-			if a8 == 0 || (r8 == 255 && g8 == 255 && b8 == 255) {
-				x++
+			// Skip transparent or white pixels (background optimization)
+			if a == 0 || (r == 255 && g == 255 && b == 255) {
 				continue
 			}
 
-			startX := x
-			x++
-			for x < bounds.Max.X {
-				if visited[getIndex(x, y)] {
+			// 1. Greedy Horizontal Expansion
+			// Determine how wide this row of identical pixels is
+			w := 1
+			for x+w < bounds.Max.X {
+				if isVisited(x+w, y) {
 					break
 				}
-				nextC := img.At(x, y)
-				nr, ng, nb, na := nextC.RGBA()
-				nr8, ng8, nb8, na8 := uint8(nr>>8), uint8(ng>>8), uint8(nb>>8), uint8(na>>8)
-				if na8 != a8 || nr8 != r8 || ng8 != g8 || nb8 != b8 {
+				nr, ng, nb, na := getPixel(x+w, y)
+				if nr != r || ng != g || nb != b || na != a {
 					break
 				}
-				x++
+				w++
 			}
 
+			// 2. Greedy Vertical Expansion
+			// Determine how many subsequent rows have this exact same horizontal segment
+			h := 1
+			for y+h < bounds.Max.Y {
+				matchRow := true
+				for k := 0; k < w; k++ {
+					if isVisited(x+k, y+h) {
+						matchRow = false
+						break
+					}
+					nr, ng, nb, na := getPixel(x+k, y+h)
+					if nr != r || ng != g || nb != b || na != a {
+						matchRow = false
+						break
+					}
+				}
+				if !matchRow {
+					break
+				}
+				h++
+			}
+
+			// 3. Add Rectangle and Mark Visited
 			rects = append(rects, rectInfo{
-				x: startX, y: y, width: x - startX, height: 1,
-				r: r8, g: g8, b: b8, a: a8,
+				x: x, y: y, width: w, height: h,
+				r: r, g: g, b: b, a: a,
 			})
+			markVisited(x, y, w, h)
+			
+			// Note: The outer X loop will naturally continue, hitting 'isVisited' true 
+			// until it passes the width of this rect, or the Y loop increments.
 		}
 	}
 
-	if len(rects) == 0 {
-		return rects
-	}
-
-	// PHASE 3: Horizontal Merge (Sort + Linear Scan)
-	// Sort by Y first, then X
-	sort.Slice(rects, func(i, j int) bool {
-		if rects[i].y != rects[j].y {
-			return rects[i].y < rects[j].y
-		}
-		return rects[i].x < rects[j].x
-	})
-
-	var mergedHorz []rectInfo
-	curr := rects[0]
-
-	for i := 1; i < len(rects); i++ {
-		next := rects[i]
-		// Try to merge horizontally
-		if curr.y == next.y &&
-			curr.height == next.height &&
-			curr.x+curr.width == next.x &&
-			curr.r == next.r && curr.g == next.g && curr.b == next.b && curr.a == next.a {
-			// Merge
-			curr.width += next.width
-		} else {
-			// Push current and start new
-			mergedHorz = append(mergedHorz, curr)
-			curr = next
-		}
-	}
-	mergedHorz = append(mergedHorz, curr)
-
-	// PHASE 4: Vertical Merge (Sort + Linear Scan)
-	// Sort by X first, then Y
-	sort.Slice(mergedHorz, func(i, j int) bool {
-		if mergedHorz[i].x != mergedHorz[j].x {
-			return mergedHorz[i].x < mergedHorz[j].x
-		}
-		return mergedHorz[i].y < mergedHorz[j].y
-	})
-
-	var finalRects []rectInfo
-	if len(mergedHorz) > 0 {
-		curr = mergedHorz[0]
-		for i := 1; i < len(mergedHorz); i++ {
-			next := mergedHorz[i]
-			// Try to merge vertically
-			if curr.x == next.x &&
-				curr.width == next.width &&
-				curr.y+curr.height == next.y &&
-				curr.r == next.r && curr.g == next.g && curr.b == next.b && curr.a == next.a {
-				// Merge
-				curr.height += next.height
-			} else {
-				// Push current and start new
-				finalRects = append(finalRects, curr)
-				curr = next
-			}
-		}
-		finalRects = append(finalRects, curr)
-	}
-
-	return finalRects
+	return rects
 }
 
 func (s svgEncoder) EncodeMatrix(w io.Writer, mat qrcode.Matrix, opts *outputImageOptions) error {
 	if opts == nil {
 		opts = defaultOutputImageOption()
 	}
+
+	// Optimization: Buffered Writer
+	bw := bufio.NewWriter(w)
+	defer bw.Flush()
 
 	width := mat.Width()*opts.qrBlockWidth() + opts.borderWidths[0] + opts.borderWidths[1]
 	height := mat.Height()*opts.qrBlockWidth() + opts.borderWidths[2] + opts.borderWidths[3]
@@ -630,7 +578,7 @@ func (s svgEncoder) EncodeMatrix(w io.Writer, mat qrcode.Matrix, opts *outputIma
 
 	svgShape := getSVGShape(opts.getShape())
 
-	_, err := fmt.Fprintf(w, `<?xml version="1.0" encoding="UTF-8"?>
+	_, err := fmt.Fprintf(bw, `<?xml version="1.0" encoding="UTF-8"?>
 <svg width="%d" height="%d" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg">
 `, width, height)
 	if err != nil {
@@ -638,7 +586,7 @@ func (s svgEncoder) EncodeMatrix(w io.Writer, mat qrcode.Matrix, opts *outputIma
 	}
 
 	if opts.qrGradient != nil {
-		if err := writeSVGGradient(w, opts.qrGradient, "qrGradient", width, height); err != nil {
+		if err := writeSVGGradient(bw, opts.qrGradient, "qrGradient", width, height); err != nil {
 			return err
 		}
 	}
@@ -647,13 +595,13 @@ func (s svgEncoder) EncodeMatrix(w io.Writer, mat qrcode.Matrix, opts *outputIma
 	r, g, b, a := backgroundColor.RGBA()
 	if a != 0 {
 		hexColor := fmt.Sprintf("#%02x%02x%02x", uint8(r>>8), uint8(g>>8), uint8(b>>8))
-		_, err = fmt.Fprintf(w, `<rect width="%d" height="%d" fill="%s"/>\n`, width, height, hexColor)
+		_, err = fmt.Fprintf(bw, `<rect width="%d" height="%d" fill="%s"/>\n`, width, height, hexColor)
 		if err != nil {
 			return err
 		}
 	}
 
-	_, err = fmt.Fprintf(w, `<g>\n`)
+	_, err = fmt.Fprintf(bw, `<g>\n`)
 	if err != nil {
 		return err
 	}
@@ -689,8 +637,6 @@ func (s svgEncoder) EncodeMatrix(w io.Writer, mat qrcode.Matrix, opts *outputIma
 	}
 
 	mat.Iterate(qrcode.IterDirection_ROW, func(x int, y int, v qrcode.QRValue) {
-		
-
 		if logoValid && opts.logoSafeZone &&
 			blockOverlapsLogo(x, y, opts.qrBlockWidth(), opts.borderWidths[3], opts.borderWidths[0],
 				width, height, logoWidth, logoHeight) {
@@ -714,25 +660,25 @@ func (s svgEncoder) EncodeMatrix(w io.Writer, mat qrcode.Matrix, opts *outputIma
 				for j := 0; j < 3; j++ {
 					subX := float64(blockX) + float64(i)*halftoneW
 					subY := float64(blockY) + float64(j)*halftoneW
-						
+
 					var subColor color.Color
 					if i == 1 && j == 1 {
 						subColor = drawCtx.color
 					} else {
 						subColor = halftoneColor(halftoneImg, opts.bgTransparent, x*3+i, y*3+j)
 					}
-					
+
 					// Get the fill string for this sub-block
 					r, g, b, a := subColor.RGBA()
 					r8, g8, b8, a8 := uint8(r>>8), uint8(g>>8), uint8(b>>8), uint8(a>>8)
-					
+
 					// Skip fully transparent pixels
 					if a8 == 0 || (r8 == 255 && g8 == 255 && b8 == 255) {
 						continue
 					}
-					
+
 					subFillStr := fmt.Sprintf("#%02x%02x%02x", r8, g8, b8)
-					
+
 					// Create a DrawContext for this sub-block
 					ctx2 := &DrawContext{
 						GraphicsContext: drawCtx.GraphicsContext,
@@ -743,12 +689,12 @@ func (s svgEncoder) EncodeMatrix(w io.Writer, mat qrcode.Matrix, opts *outputIma
 						color:           subColor,
 						neighbours:      drawCtx.neighbours,
 					}
-					
+
 					// Generate the SVG path for this sub-block using the shape
 					pathData := svgShape.GenerateSVGPath(ctx2, false)
-					
+
 					// Write the sub-block
-					fmt.Fprintf(w, `<g fill="%s">%s</g>\n`, subFillStr, pathData)
+					fmt.Fprintf(bw, `<g fill="%s">%s</g>\n`, subFillStr, pathData)
 				}
 			}
 			return
@@ -780,26 +726,26 @@ func (s svgEncoder) EncodeMatrix(w io.Writer, mat qrcode.Matrix, opts *outputIma
 
 		if isComplexShape {
 			if opts.qrGradient != nil {
-				fmt.Fprintf(w, `<g fill="url(#qrGradient)">%s</g>\n`, pathData)
+				fmt.Fprintf(bw, `<g fill="url(#qrGradient)">%s</g>\n`, pathData)
 			} else {
-				fmt.Fprintf(w, `<g>%s</g>\n`, pathData)
+				fmt.Fprintf(bw, `<g>%s</g>\n`, pathData)
 			}
 		} else {
-			fmt.Fprintf(w, `<g fill="%s">%s</g>\n`, fillStr, pathData)
+			fmt.Fprintf(bw, `<g fill="%s">%s</g>\n`, fillStr, pathData)
 		}
 	})
 
-	_, err = fmt.Fprintf(w, `</g>\n`)
+	_, err = fmt.Fprintf(bw, `</g>\n`)
 	if err != nil {
 		return err
 	}
 
 	if logoValid {
-		if err := embedLogoAsPNG(w, opts.logo, width, height, logoWidth, logoHeight); err != nil {
+		if err := embedLogoAsPNG(bw, opts.logo, width, height, logoWidth, logoHeight); err != nil {
 			// Skip logo if encoding fails
 		}
 	}
 
-	_, err = fmt.Fprintf(w, `</svg>`)
+	_, err = fmt.Fprintf(bw, `</svg>`)
 	return err
 }

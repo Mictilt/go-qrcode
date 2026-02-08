@@ -117,11 +117,31 @@ func drawTo(w io.Writer, mat qrcode.Matrix, option *outputImageOptions) (err err
 
 // draw deal QRCode's matrix to be an image.Image. Notice that if anyone changed this function,
 // please also check the function outputImageOptions.preCalculateAttribute().
+// When resolution is set, block size is derived so the image is drawn natively at resolution×resolution (sharp PNG/JPEG). Otherwise layout uses qrWidth and borders.
 func draw(mat qrcode.Matrix, opt *outputImageOptions) image.Image {
 	top, right, bottom, left := opt.borderWidths[0], opt.borderWidths[1], opt.borderWidths[2], opt.borderWidths[3]
-	// closer as image width, h as image height
-	w := mat.Width()*opt.qrBlockWidth() + left + right
-	h := mat.Height()*opt.qrBlockWidth() + top + bottom
+	blockW := opt.qrBlockWidth()
+	w := mat.Width()*blockW + left + right
+	h := mat.Height()*blockW + top + bottom
+
+	if opt.resolution != nil && *opt.resolution > 0 {
+		res := *opt.resolution
+		availableW := res - left - right
+		availableH := res - top - bottom
+		if availableW > 0 && availableH > 0 && mat.Width() > 0 && mat.Height() > 0 {
+			blockW = availableW / mat.Width()
+			if blockH := availableH / mat.Height(); blockH < blockW {
+				blockW = blockH
+			}
+			if blockW < 1 {
+				blockW = 1
+			}
+			w = mat.Width()*blockW + left + right
+			h = mat.Height()*blockW + top + bottom
+		}
+		w, h = res, res
+	}
+
 	dc := gg.NewContext(w, h)
 
 	// draw background
@@ -134,15 +154,15 @@ func draw(mat qrcode.Matrix, opt *outputImageOptions) image.Image {
 		GraphicsContext: &GGContextWrapper{Context: dc},
 		x:               0.0,
 		y:               0.0,
-		w:               opt.qrBlockWidth(),
-		h:               opt.qrBlockWidth(),
+		w:               blockW,
+		h:               blockW,
 		color:           color.Black,
 	}
 	shape := opt.getShape()
 
 	var (
 		halftoneImg image.Image
-		halftoneW   = float64(opt.qrBlockWidth()) / 3.0
+		halftoneW   = float64(blockW) / 3.0
 	)
 	if opt.halftoneImg != nil {
 		halftoneImg = imgkit.Binaryzation(
@@ -171,7 +191,7 @@ func draw(mat qrcode.Matrix, opt *outputImageOptions) image.Image {
 	// If the logo safe zone is enabled, clear the corresponding area in bitMap
 	if logoValid && opt.logoSafeZone {
 		mat.Iterate(qrcode.IterDirection_ROW, func(x int, y int, v qrcode.QRValue) {
-			if blockOverlapsLogo(x, y, opt.qrBlockWidth(), left, top, w, h, logoWidth, logoHeight) {
+			if blockOverlapsLogo(x, y, blockW, left, top, w, h, logoWidth, logoHeight) {
 				bitMap[x][y] = false
 			}
 		})
@@ -182,15 +202,15 @@ func draw(mat qrcode.Matrix, opt *outputImageOptions) image.Image {
 		// Skip drawing this block if it overlaps with the logo area.
 		// This preserves logo visibility by preventing block rendering underneath it.
 		if logoValid && opt.logoSafeZone &&
-			blockOverlapsLogo(x, y, opt.qrBlockWidth(), left, top, w, h, logoWidth, logoHeight) {
+			blockOverlapsLogo(x, y, blockW, left, top, w, h, logoWidth, logoHeight) {
 			if v.IsSet() {
 				return
 			}
 		}
 
 		// Draw the block
-		ctx.x, ctx.y = float64(x*opt.qrBlockWidth()+left), float64(y*opt.qrBlockWidth()+top)
-		ctx.w, ctx.h = opt.qrBlockWidth(), opt.qrBlockWidth()
+		ctx.x, ctx.y = float64(x*blockW+left), float64(y*blockW+top)
+		ctx.w, ctx.h = blockW, blockW
 		ctx.color = opt.translateToRGBA(v)
 		ctx.neighbours = getNeighbours(bitMap, x, y)
 

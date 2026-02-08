@@ -432,3 +432,12 @@ func WithLogoSafeZone() ImageOption {
 		oo.logoSafeZone = true
 	})
 }
+
+// WithResolution sets the output image size to resolution×resolution. For PNG/JPEG the QR is drawn at that size natively (sharp). For SVG the element is res×res with a viewBox.
+func WithResolution(resolution *int) ImageOption {
+	return newFuncOption(func(oo *outputImageOptions) {
+		if resolution != nil {
+			oo.resolution = resolution
+		}
+	})
+}

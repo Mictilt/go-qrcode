@@ -545,8 +545,8 @@ func optimizeRectangles(img image.Image, bounds image.Rectangle) []rectInfo {
 				r: r, g: g, b: b, a: a,
 			})
 			markVisited(x, y, w, h)
-			
-			// Note: The outer X loop will naturally continue, hitting 'isVisited' true 
+
+			// Note: The outer X loop will naturally continue, hitting 'isVisited' true
 			// until it passes the width of this rect, or the Y loop increments.
 		}
 	}
@@ -563,9 +563,15 @@ func (s svgEncoder) EncodeMatrix(w io.Writer, mat qrcode.Matrix, opts *outputIma
 	bw := bufio.NewWriter(w)
 	defer bw.Flush()
 
-	width := mat.Width()*opts.qrBlockWidth() + opts.borderWidths[0] + opts.borderWidths[1]
-	height := mat.Height()*opts.qrBlockWidth() + opts.borderWidths[2] + opts.borderWidths[3]
-
+	top, right, bottom, left := opts.borderWidths[0], opts.borderWidths[1], opts.borderWidths[2], opts.borderWidths[3]
+	blockW := opts.qrBlockWidth()
+	width := mat.Width()*blockW + left + right
+	height := mat.Height()*blockW + top + bottom
+	// Resolution is applied only as output size: SVG element is res×res with viewBox so content scales.
+	svgWidth, svgHeight := width, height
+	if opts.resolution != nil && *opts.resolution > 0 {
+		svgWidth, svgHeight = *opts.resolution, *opts.resolution
+	}
 	hasLogo := opts.logo != nil
 	var logoValid bool
 	var logoWidth, logoHeight int
@@ -578,9 +584,16 @@ func (s svgEncoder) EncodeMatrix(w io.Writer, mat qrcode.Matrix, opts *outputIma
 
 	svgShape := getSVGShape(opts.getShape())
 
-	_, err := fmt.Fprintf(bw, `<?xml version="1.0" encoding="UTF-8"?>
+	var err error
+	if opts.resolution != nil && *opts.resolution > 0 {
+		_, err = fmt.Fprintf(bw, `<?xml version="1.0" encoding="UTF-8"?>
+<svg width="%d" height="%d" viewBox="0 0 %d %d" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg">
+`, svgWidth, svgHeight, width, height)
+	} else {
+		_, err = fmt.Fprintf(bw, `<?xml version="1.0" encoding="UTF-8"?>
 <svg width="%d" height="%d" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg">
-`, width, height)
+`, svgWidth, svgHeight)
+	}
 	if err != nil {
 		return err
 	}
@@ -618,7 +631,7 @@ func (s svgEncoder) EncodeMatrix(w io.Writer, mat qrcode.Matrix, opts *outputIma
 
 	if logoValid && opts.logoSafeZone {
 		mat.Iterate(qrcode.IterDirection_ROW, func(x int, y int, v qrcode.QRValue) {
-			if blockOverlapsLogo(x, y, opts.qrBlockWidth(), opts.borderWidths[3], opts.borderWidths[0], width, height, logoWidth, logoHeight) {
+			if blockOverlapsLogo(x, y, blockW, left, top, width, height, logoWidth, logoHeight) {
 				bitmap[y][x] = false
 			}
 		})
@@ -626,7 +639,7 @@ func (s svgEncoder) EncodeMatrix(w io.Writer, mat qrcode.Matrix, opts *outputIma
 
 	hasHalftone := opts.halftoneImg != nil
 	var halftoneImg image.Image
-	halftoneW := float64(opts.qrBlockWidth()) / 3.0
+	halftoneW := float64(blockW) / 3.0
 
 	if hasHalftone {
 		halftoneImg = imgkit.Binaryzation(
@@ -638,19 +651,18 @@ func (s svgEncoder) EncodeMatrix(w io.Writer, mat qrcode.Matrix, opts *outputIma
 
 	mat.Iterate(qrcode.IterDirection_ROW, func(x int, y int, v qrcode.QRValue) {
 		if logoValid && opts.logoSafeZone &&
-			blockOverlapsLogo(x, y, opts.qrBlockWidth(), opts.borderWidths[3], opts.borderWidths[0],
-				width, height, logoWidth, logoHeight) {
+			blockOverlapsLogo(x, y, blockW, left, top, width, height, logoWidth, logoHeight) {
 			return
 		}
 
-		blockX := x*opts.qrBlockWidth() + opts.borderWidths[3]
-		blockY := y*opts.qrBlockWidth() + opts.borderWidths[0]
+		blockX := x*blockW + left
+		blockY := y*blockW + top
 		neighbours := getNeighbours(bitmap, x, y)
 		drawCtx := &DrawContext{
 			x:          float64(blockX),
 			y:          float64(blockY),
-			w:          opts.qrBlockWidth(),
-			h:          opts.qrBlockWidth(),
+			w:          blockW,
+			h:          blockW,
 			color:      opts.translateToRGBA(v),
 			neighbours: neighbours,
 		}

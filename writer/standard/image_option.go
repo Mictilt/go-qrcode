@@ -74,6 +74,7 @@ func defaultOutputImageOption() *outputImageOptions {
 		shape:              _shapeRectangle, //
 		imageEncoder:       jpegEncoder{},
 		borderWidths:       [4]int{_defaultPadding, _defaultPadding, _defaultPadding, _defaultPadding},
+		resolution:         nil,
 	}
 }
 
@@ -119,6 +120,9 @@ type outputImageOptions struct {
 
 	// halftoneImg is the halftone image for the output image.
 	halftoneImg image.Image
+
+	// resolution: for raster (PNG/JPEG) the QR is drawn at that size natively (block size derived to fit res×res) for sharp output; for SVG the element is res×res with a viewBox.
+	resolution *int
 }
 
 func (oo *outputImageOptions) backgroundColor() color.RGBA {
@@ -141,6 +145,8 @@ func (oo *outputImageOptions) logoImage() image.Image {
 	return oo.logo
 }
 
+// qrBlockWidth returns the pixel size of each QR module. The 255 cap matches WithQRWidth(uint8).
+// When block size is derived from resolution in draw(), it is not limited to 255.
 func (oo *outputImageOptions) qrBlockWidth() int {
 	if oo == nil || (oo.qrWidth <= 0 || oo.qrWidth > 255) {
 		return 20
